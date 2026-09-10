@@ -23,10 +23,15 @@ __all__ = [
 from .record_storage import retrieve_encrypted_record, store_encrypted_record
 from .blockchain_client import BlockchainClient
 from .service import HealthcareWorkflowService
+from .audit import AuditEntry, AuditEvent, JsonlAuditSink, MemoryAuditSink
 
 __all__ = [
     "BlockchainClient",
     "HealthcareWorkflowService",
+    "AuditEntry",
+    "AuditEvent",
+    "JsonlAuditSink",
+    "MemoryAuditSink",
     "retrieve_encrypted_record",
     "store_encrypted_record",
 ]

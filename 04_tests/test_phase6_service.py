@@ -13,7 +13,15 @@ if str(FRAMEWORK) not in sys.path:
     sys.path.insert(0, str(FRAMEWORK))
 
 from api import HealthcareAPI  # noqa: E402
-from audit import MemoryAuditSink  # noqa: E402
+from audit import (  # noqa: E402
+    ACCESS_DENIED,
+    ACCESS_GRANTED,
+    ACCESS_REVOKED,
+    DECRYPTION_SUCCESS,
+    RECORD_CREATED,
+    RECORD_RETRIEVED,
+    MemoryAuditSink,
+)
 from consent import grant_access  # noqa: E402
 from crypto.ecc_protection import (  # noqa: E402
     ALGORITHM as ECC_ALGORITHM,
@@ -111,7 +119,14 @@ class Phase6ServiceTests(unittest.TestCase):
             blockchain.grant_access(record.record_id, DOCTOR_ADDRESS)
             grant_access(database, PATIENT_ID, DOCTOR_ID, record.record_id)
             self.assertEqual(service.request_record(DOCTOR_ID, record.record_id), source)
-            self.assertEqual([event.outcome for event in audit.events], ["success", "denied", "success"])
+            self.assertEqual(
+                [event.outcome for event in audit.events],
+                ["success", "denied", "success", "success"],
+            )
+            self.assertEqual(
+                [event.operation for event in audit.events],
+                [RECORD_CREATED, ACCESS_DENIED, DECRYPTION_SUCCESS, RECORD_RETRIEVED],
+            )
             self.assertEqual(blockchain.access_events, [("record-001", DOCTOR_ADDRESS)])
         finally:
             database.close()
@@ -138,6 +153,26 @@ class Phase6ServiceTests(unittest.TestCase):
             grant_access(database, PATIENT_ID, DOCTOR_ID, "record-api")
             result = api.request({"token": "ok", "doctor_id": DOCTOR_ID, "record_id": "record-api"})
             self.assertEqual(base64.b64decode(result["ehr_base64"]), b"api ehr")
+        finally:
+            database.close()
+            storage_root.cleanup()
+
+    def test_service_grant_and_revoke_are_audited(self) -> None:
+        database, storage_root, blockchain, audit, service = self._service(ECC_ALGORITHM)
+        try:
+            service.upload_record(
+                PATIENT_ID, b"consent test", DOCTOR_ID, ECC_ALGORITHM, record_id="record-consent"
+            )
+            grant = service.grant_doctor_access(PATIENT_ID, DOCTOR_ID, "record-consent")
+            self.assertIsNone(grant.revoked_at)
+            self.assertTrue(blockchain.check_access("record-consent", DOCTOR_ADDRESS))
+            revoked = service.revoke_doctor_access(PATIENT_ID, DOCTOR_ID, "record-consent")
+            self.assertIsNotNone(revoked.revoked_at)
+            self.assertFalse(blockchain.check_access("record-consent", DOCTOR_ADDRESS))
+            self.assertEqual(
+                [item.operation for item in audit.events],
+                [RECORD_CREATED, ACCESS_GRANTED, ACCESS_REVOKED],
+            )
         finally:
             database.close()
             storage_root.cleanup()

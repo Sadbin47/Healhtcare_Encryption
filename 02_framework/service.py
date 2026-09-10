@@ -2,16 +2,30 @@
 
 from __future__ import annotations
 
-import base64
 import os
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
 try:
-    from .audit import AuditEvent, AuditSink, MemoryAuditSink
+    from .audit import (
+        ACCESS_DENIED,
+        ACCESS_GRANTED,
+        ACCESS_REVOKED,
+        DECRYPTION_FAILED,
+        DECRYPTION_SUCCESS,
+        RECORD_CREATED,
+        RECORD_RETRIEVED,
+        AuditEvent,
+        AuditSink,
+        MemoryAuditSink,
+    )
     from .blockchain_client import BlockchainClient
-    from .consent import check_access
+    from .consent import (
+        check_access,
+        grant_access as grant_local_access,
+        revoke_access as revoke_local_access,
+    )
     from .crypto.aes_gcm import decrypt_record, encrypt_record, generate_key
     from .crypto.ecc_protection import (
         ALGORITHM as ECC_ALGORITHM,
@@ -30,9 +44,24 @@ try:
     from .models import MedicalRecord
     from .storage.base import EncryptedRecordStore, StorageError, validate_envelope
 except ImportError:  # pragma: no cover - direct framework imports.
-    from audit import AuditEvent, AuditSink, MemoryAuditSink
+    from audit import (
+        ACCESS_DENIED,
+        ACCESS_GRANTED,
+        ACCESS_REVOKED,
+        DECRYPTION_FAILED,
+        DECRYPTION_SUCCESS,
+        RECORD_CREATED,
+        RECORD_RETRIEVED,
+        AuditEvent,
+        AuditSink,
+        MemoryAuditSink,
+    )
     from blockchain_client import BlockchainClient
-    from consent import check_access
+    from consent import (
+        check_access,
+        grant_access as grant_local_access,
+        revoke_access as revoke_local_access,
+    )
     from crypto.aes_gcm import decrypt_record, encrypt_record, generate_key
     from crypto.ecc_protection import (
         ALGORITHM as ECC_ALGORITHM,
@@ -112,6 +141,67 @@ class HealthcareWorkflowService:
     def _audit(self, **kwargs: Any) -> None:
         self.audit_sink.record(AuditEvent(**kwargs))
 
+    def grant_doctor_access(self, patient_id: str, doctor_id: str, record_id: str):
+        """Grant both on-chain permission and local patient consent."""
+
+        doctor_address = self._doctor_address(doctor_id)
+        sender_kwargs = {"sender": self.registrar_address} if self.registrar_address else {}
+        self.blockchain.grant_access(record_id, doctor_address, **sender_kwargs)
+        try:
+            grant = grant_local_access(self.database, patient_id, doctor_id, record_id)
+        except Exception:
+            try:
+                self.blockchain.revoke_access(record_id, doctor_address, **sender_kwargs)
+            finally:
+                self._audit(
+                    operation=ACCESS_GRANTED,
+                    success=False,
+                    actor=patient_id,
+                    patient_id=patient_id,
+                    record_id=record_id,
+                    reason="local consent update failed after blockchain grant",
+                )
+            raise
+        record = self.database.get_record(record_id)
+        self._audit(
+            operation=ACCESS_GRANTED,
+            success=True,
+            actor=patient_id,
+            patient_id=patient_id,
+            record_id=record_id,
+            algorithm=record.key_protection_algorithm if record else None,
+        )
+        return grant
+
+    def revoke_doctor_access(self, patient_id: str, doctor_id: str, record_id: str):
+        """Revoke locally first so a partial failure remains fail-closed."""
+
+        doctor_address = self._doctor_address(doctor_id)
+        grant = revoke_local_access(self.database, patient_id, doctor_id, record_id)
+        sender_kwargs = {"sender": self.registrar_address} if self.registrar_address else {}
+        try:
+            self.blockchain.revoke_access(record_id, doctor_address, **sender_kwargs)
+        except Exception:
+            self._audit(
+                operation=ACCESS_REVOKED,
+                success=False,
+                actor=patient_id,
+                patient_id=patient_id,
+                record_id=record_id,
+                reason="blockchain revocation failed; local consent remains revoked",
+            )
+            raise
+        record = self.database.get_record(record_id)
+        self._audit(
+            operation=ACCESS_REVOKED,
+            success=True,
+            actor=patient_id,
+            patient_id=patient_id,
+            record_id=record_id,
+            algorithm=record.key_protection_algorithm if record else None,
+        )
+        return grant
+
     def upload_record(
         self,
         patient_id: str,
@@ -172,21 +262,23 @@ class HealthcareWorkflowService:
             self.database.add_record(stored)
         except Exception:
             self._audit(
-                action="upload_record",
-                outcome="failure",
+                operation=RECORD_CREATED,
+                success=False,
+                actor=patient_id,
                 record_id=record_id,
                 patient_id=patient_id,
-                doctor_id=doctor_id,
+                algorithm=algorithm,
                 backend=self.storage.backend_name,
-                detail="blockchain registration or metadata persistence failed",
+                reason="blockchain registration or metadata persistence failed",
             )
             raise
         self._audit(
-            action="upload_record",
-            outcome="success",
+            operation=RECORD_CREATED,
+            success=True,
+            actor=patient_id,
             record_id=record_id,
             patient_id=patient_id,
-            doctor_id=doctor_id,
+            algorithm=algorithm,
             backend=self.storage.backend_name,
         )
         return stored
@@ -202,43 +294,87 @@ class HealthcareWorkflowService:
             raise ValueError("medical record does not exist")
         doctor_address = self._doctor_address(doctor_id)
         if not self.blockchain.check_access(record_id, doctor_address):
-            self._audit(action="request_record", outcome="denied", record_id=record_id, doctor_id=doctor_id)
+            self._audit(
+                operation=ACCESS_DENIED,
+                success=False,
+                actor=doctor_id,
+                patient_id=record.patient_id,
+                record_id=record_id,
+                algorithm=record.key_protection_algorithm,
+                reason="blockchain access is not granted",
+            )
             raise PermissionError("blockchain access is not granted")
         if not check_access(self.database, record.patient_id, doctor_id, record_id):
             self._audit(
-                action="request_record",
-                outcome="denied",
+                operation=ACCESS_DENIED,
+                success=False,
+                actor=doctor_id,
                 record_id=record_id,
                 patient_id=record.patient_id,
-                doctor_id=doctor_id,
-                detail="local patient consent is not active",
+                algorithm=record.key_protection_algorithm,
+                reason="local patient consent is not active",
             )
             raise PermissionError("patient consent is not active")
         if self.private_key_resolver is None:
             raise ValueError("private_key_resolver is required for doctor retrieval")
-        cid, chain_hash, _ = self.blockchain.get_record_metadata(record_id)
-        if chain_hash.hex() != record.encrypted_file_hash.lower().removeprefix("0x"):
-            raise StorageError("blockchain hash does not match local record metadata")
-        envelope = self.storage.download_encrypted_record(cid)
-        if envelope.record_id != record_id or envelope.ciphertext_hash != record.encrypted_file_hash:
-            raise StorageError("retrieved envelope does not match record metadata")
-        private_key = self.private_key_resolver(doctor_id)
-        aad = record_aad(record_id, envelope.key_protection, envelope.key_reference)
-        if envelope.key_protection == ECC_ALGORITHM:
-            aes_key = recover_aes_key_ecc(envelope.wrapped_key, private_key)
-        elif envelope.key_protection == MLKEM_ALGORITHM:
-            aes_key = recover_aes_key_mlkem(envelope.wrapped_key, private_key)
-        else:
-            raise StorageError("unsupported envelope key-protection algorithm")
-        plaintext = decrypt_record(envelope.nonce, envelope.ciphertext, envelope.tag, aes_key, aad)
-        register_kwargs = {"sender": doctor_address}
-        self.blockchain.record_access(record_id, **register_kwargs)
+        try:
+            cid, chain_hash, _ = self.blockchain.get_record_metadata(record_id)
+            if chain_hash.hex() != record.encrypted_file_hash.lower().removeprefix("0x"):
+                raise StorageError("blockchain hash does not match local record metadata")
+            envelope = self.storage.download_encrypted_record(cid)
+            if envelope.record_id != record_id or envelope.ciphertext_hash != record.encrypted_file_hash:
+                raise StorageError("retrieved envelope does not match record metadata")
+            private_key = self.private_key_resolver(doctor_id)
+            aad = record_aad(record_id, envelope.key_protection, envelope.key_reference)
+            if envelope.key_protection == ECC_ALGORITHM:
+                aes_key = recover_aes_key_ecc(envelope.wrapped_key, private_key)
+            elif envelope.key_protection == MLKEM_ALGORITHM:
+                aes_key = recover_aes_key_mlkem(envelope.wrapped_key, private_key)
+            else:
+                raise StorageError("unsupported envelope key-protection algorithm")
+            plaintext = decrypt_record(envelope.nonce, envelope.ciphertext, envelope.tag, aes_key, aad)
+        except Exception:
+            self._audit(
+                operation=DECRYPTION_FAILED,
+                success=False,
+                actor=doctor_id,
+                patient_id=record.patient_id,
+                record_id=record_id,
+                algorithm=record.key_protection_algorithm,
+                backend=record.storage_backend,
+                reason="record retrieval, integrity verification, or decryption failed",
+            )
+            raise
         self._audit(
-            action="request_record",
-            outcome="success",
-            record_id=record_id,
+            operation=DECRYPTION_SUCCESS,
+            success=True,
+            actor=doctor_id,
             patient_id=record.patient_id,
-            doctor_id=doctor_id,
-            backend=self.storage.backend_name,
+            record_id=record_id,
+            algorithm=record.key_protection_algorithm,
+            backend=record.storage_backend,
+        )
+        try:
+            self.blockchain.record_access(record_id, sender=doctor_address)
+        except Exception:
+            self._audit(
+                operation=RECORD_RETRIEVED,
+                success=False,
+                actor=doctor_id,
+                patient_id=record.patient_id,
+                record_id=record_id,
+                algorithm=record.key_protection_algorithm,
+                backend=record.storage_backend,
+                reason="blockchain access-event transaction failed",
+            )
+            raise
+        self._audit(
+            operation=RECORD_RETRIEVED,
+            success=True,
+            actor=doctor_id,
+            patient_id=record.patient_id,
+            record_id=record_id,
+            algorithm=record.key_protection_algorithm,
+            backend=record.storage_backend,
         )
         return plaintext

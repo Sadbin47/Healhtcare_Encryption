@@ -64,6 +64,40 @@ class HealthcareAPI:
             raise ValueError("invalid record request") from error
         return {"record_id": payload["record_id"], "ehr_base64": base64.b64encode(plaintext).decode("ascii")}
 
+    def grant_access(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self.authenticate(payload):
+            raise PermissionError("request authentication failed")
+        try:
+            grant = self.service.grant_doctor_access(
+                payload["patient_id"], payload["doctor_id"], payload["record_id"]
+            )
+        except (KeyError, ValueError, TypeError) as error:
+            raise ValueError("invalid access-grant request") from error
+        return {
+            "patient_id": grant.patient_id,
+            "doctor_id": grant.doctor_id,
+            "record_id": grant.record_id,
+            "permission": grant.permission,
+            "active": grant.revoked_at is None,
+        }
+
+    def revoke_access(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self.authenticate(payload):
+            raise PermissionError("request authentication failed")
+        try:
+            grant = self.service.revoke_doctor_access(
+                payload["patient_id"], payload["doctor_id"], payload["record_id"]
+            )
+        except (KeyError, ValueError, TypeError) as error:
+            raise ValueError("invalid access-revocation request") from error
+        return {
+            "patient_id": payload["patient_id"],
+            "doctor_id": payload["doctor_id"],
+            "record_id": payload["record_id"],
+            "active": False,
+            "grant_existed": grant is not None,
+        }
+
 
 class HealthcareRequestHandler(BaseHTTPRequestHandler):
     api: HealthcareAPI
@@ -101,6 +135,10 @@ class HealthcareRequestHandler(BaseHTTPRequestHandler):
                 result = self.api.upload(payload)
             elif self.path == "/records/request":
                 result = self.api.request(payload)
+            elif self.path == "/access/grant":
+                result = self.api.grant_access(payload)
+            elif self.path == "/access/revoke":
+                result = self.api.revoke_access(payload)
             else:
                 self._response(404, {"error": "not_found"})
                 return
