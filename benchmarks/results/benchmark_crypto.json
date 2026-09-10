@@ -1,0 +1,266 @@
+{
+  "benchmark": "phase11-crypto-local",
+  "environment": {
+    "cryptography": "50.0.1",
+    "machine": "x86_64",
+    "platform": "Linux-7.2.4-arch1-2-x86_64-with-glibc2.44",
+    "processor": "unknown",
+    "python": "3.14.7"
+  },
+  "metrics": [
+    {
+      "algorithm": "AES-256-GCM",
+      "name": "aes_key_generation",
+      "samples_ns": [
+        5210,
+        5030,
+        3617,
+        3496,
+        3316,
+        3256,
+        3357,
+        3207,
+        3677,
+        3326
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.00521,
+        "mean_ms": 0.0037492000000000003,
+        "median_ms": 0.0034265,
+        "min_ms": 0.003207,
+        "stdev_ms": 0.0007392934765331319
+      }
+    },
+    {
+      "algorithm": "AES-256-GCM",
+      "name": "aes_encryption",
+      "samples_ns": [
+        871354,
+        892815,
+        880221,
+        880903,
+        874971,
+        870303,
+        860313,
+        891733,
+        916039,
+        927852
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.927852,
+        "mean_ms": 0.8866504000000001,
+        "median_ms": 0.8805620000000001,
+        "min_ms": 0.860313,
+        "stdev_ms": 0.021162731714029742
+      }
+    },
+    {
+      "algorithm": "AES-256-GCM",
+      "name": "aes_decryption",
+      "samples_ns": [
+        912672,
+        609397,
+        519236,
+        612733,
+        851026,
+        886533,
+        890320,
+        902233,
+        902294,
+        915788
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.915788,
+        "mean_ms": 0.8002232,
+        "median_ms": 0.8884265,
+        "min_ms": 0.519236,
+        "stdev_ms": 0.15473747044217973
+      }
+    },
+    {
+      "algorithm": "ECC-ECDH-P256-AES-GCM",
+      "name": "ecc_key_generation",
+      "samples_ns": [
+        42631,
+        42861,
+        56437,
+        42551,
+        40507,
+        41058,
+        41058,
+        40086,
+        40426,
+        40678
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.056437,
+        "mean_ms": 0.0428293,
+        "median_ms": 0.041058,
+        "min_ms": 0.040086,
+        "stdev_ms": 0.004886318770017183
+      }
+    },
+    {
+      "algorithm": "ECC-ECDH-P256-AES-GCM",
+      "name": "ecc_key_protection",
+      "samples_ns": [
+        312063,
+        305360,
+        323925,
+        307884,
+        295000,
+        309548,
+        298437,
+        300090,
+        329886,
+        296443
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.329886,
+        "mean_ms": 0.3078636,
+        "median_ms": 0.306622,
+        "min_ms": 0.295,
+        "stdev_ms": 0.0116184107652945
+      }
+    },
+    {
+      "algorithm": "ECC-ECDH-P256-AES-GCM",
+      "name": "ecc_key_recovery",
+      "samples_ns": [
+        259532,
+        261787,
+        272257,
+        253081,
+        261246,
+        248662,
+        273308,
+        249023,
+        245967,
+        248852
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.273308,
+        "mean_ms": 0.2573715,
+        "median_ms": 0.2563065,
+        "min_ms": 0.245967,
+        "stdev_ms": 0.009895745586979404
+      }
+    },
+    {
+      "algorithm": "ML-KEM-768-AES-GCM",
+      "name": "mlkem_key_generation",
+      "samples_ns": [
+        397244,
+        403666,
+        399929,
+        392004,
+        399418,
+        390822,
+        389529,
+        403376,
+        390571,
+        402444
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.403666,
+        "mean_ms": 0.3969003,
+        "median_ms": 0.398331,
+        "min_ms": 0.389529,
+        "stdev_ms": 0.005670464904514739
+      }
+    },
+    {
+      "algorithm": "ML-KEM-768-AES-GCM",
+      "name": "mlkem_key_protection",
+      "samples_ns": [
+        150476,
+        145657,
+        161557,
+        141869,
+        141228,
+        143122,
+        140637,
+        140176,
+        140136,
+        168490
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.16849,
+        "mean_ms": 0.1473348,
+        "median_ms": 0.1424955,
+        "min_ms": 0.140136,
+        "stdev_ms": 0.009974093852464883
+      }
+    },
+    {
+      "algorithm": "ML-KEM-768-AES-GCM",
+      "name": "mlkem_key_recovery",
+      "samples_ns": [
+        194038,
+        210579,
+        186634,
+        183448,
+        189800,
+        184530,
+        204659,
+        190311,
+        187085,
+        182817
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.210579,
+        "mean_ms": 0.1913901,
+        "median_ms": 0.1884425,
+        "min_ms": 0.182817,
+        "stdev_ms": 0.009308133724508543
+      }
+    }
+  ],
+  "protocol": {
+    "aad": "record-bound metadata; value excluded from output",
+    "repeats": 10,
+    "statistics": [
+      "mean",
+      "median",
+      "stdev",
+      "min",
+      "max"
+    ],
+    "timer": "time.perf_counter_ns",
+    "warmups": 2
+  },
+  "sizes": {
+    "aes_ciphertext_bytes": 342069,
+    "aes_payload_bytes": 342097,
+    "ecc_envelope_json_bytes": 456756,
+    "ecc_protected_key_json_bytes": 351,
+    "ecc_public_key_serialized_bytes": 124,
+    "mlkem_envelope_json_bytes": 458072,
+    "mlkem_protected_key_json_bytes": 1670,
+    "mlkem_public_key_serialized_bytes": 1580,
+    "plaintext_bytes": 342069
+  },
+  "source": {
+    "path": "/home/s4d/Downloads/NS-PaperWork/06_Datasets_and_Data/EHR.csv",
+    "sha256": "7805fde036a11f011c2092450effadbe5c72329006b2438ce2c80b34725a9b80",
+    "size_bytes": 342069
+  },
+  "status": "VERIFIED_LOCAL_ONLY",
+  "unavailable_live_metrics": {
+    "blockchain_registration": "NOT_RUN: no live Anvil/Hardhat/provider configured",
+    "ipfs_download": "NOT_RUN: no live IPFS node configured",
+    "ipfs_upload": "NOT_RUN: no live IPFS node configured",
+    "vps_download": "NOT_RUN: no live VPS configured",
+    "vps_upload": "NOT_RUN: no live VPS configured",
+    "wireguard_latency": "NOT_RUN: no live WireGuard tunnel configured"
+  }
+}

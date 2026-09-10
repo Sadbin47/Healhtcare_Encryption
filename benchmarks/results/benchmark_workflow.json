@@ -1,0 +1,243 @@
+{
+  "benchmark": "phase11-workflow-local",
+  "environment": {
+    "cryptography": "50.0.1",
+    "machine": "x86_64",
+    "platform": "Linux-7.2.4-arch1-2-x86_64-with-glibc2.44",
+    "processor": "unknown",
+    "python": "3.14.7"
+  },
+  "metrics": [
+    {
+      "algorithm": "ECC-ECDH-P256-AES-GCM",
+      "name": "workflow_upload_local_storage",
+      "samples_ns": [
+        9901960,
+        9924072,
+        9937819,
+        9694687,
+        9913492,
+        9299146,
+        6083170,
+        7538273,
+        9506009,
+        9698925
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 9.937819,
+        "mean_ms": 9.1497553,
+        "median_ms": 9.696805999999999,
+        "min_ms": 6.08317,
+        "stdev_ms": 1.2960756668260838
+      }
+    },
+    {
+      "algorithm": "ECC-ECDH-P256-AES-GCM",
+      "name": "blockchain_access_check_local_double",
+      "samples_ns": [
+        1462,
+        732,
+        541,
+        571,
+        471,
+        541,
+        481,
+        461,
+        521,
+        501
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.001462,
+        "mean_ms": 0.0006282,
+        "median_ms": 0.000531,
+        "min_ms": 0.000461,
+        "stdev_ms": 0.0003030371447712493
+      }
+    },
+    {
+      "algorithm": "ECC-ECDH-P256-AES-GCM",
+      "name": "authorized_access_end_to_end_local",
+      "samples_ns": [
+        6910420,
+        6957530,
+        6944615,
+        7089952,
+        7189831,
+        7058151,
+        7263130,
+        7092386,
+        7351017,
+        7466616
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 7.466616,
+        "mean_ms": 7.1323648,
+        "median_ms": 7.091169000000001,
+        "min_ms": 6.91042,
+        "stdev_ms": 0.18376194686532174
+      }
+    },
+    {
+      "algorithm": "ECC-ECDH-P256-AES-GCM",
+      "name": "encrypted_envelope_download_local_storage",
+      "samples_ns": [
+        6917794,
+        4305675,
+        4176840,
+        4231704,
+        4187180,
+        4249619,
+        4018991,
+        3812659,
+        6397877,
+        6786084
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 6.917794,
+        "mean_ms": 4.9084423,
+        "median_ms": 4.2406615,
+        "min_ms": 3.812659,
+        "stdev_ms": 1.2509607643324079
+      }
+    },
+    {
+      "algorithm": "ML-KEM-768-AES-GCM",
+      "name": "workflow_upload_local_storage",
+      "samples_ns": [
+        9891561,
+        9969849,
+        10037157,
+        9850172,
+        9918291,
+        9652828,
+        9657096,
+        9653589,
+        9770852,
+        9793524
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 10.037157,
+        "mean_ms": 9.8194919,
+        "median_ms": 9.821848,
+        "min_ms": 9.652828,
+        "stdev_ms": 0.1376771856275479
+      }
+    },
+    {
+      "algorithm": "ML-KEM-768-AES-GCM",
+      "name": "blockchain_access_check_local_double",
+      "samples_ns": [
+        1012,
+        701,
+        611,
+        471,
+        501,
+        641,
+        491,
+        481,
+        501,
+        641
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 0.001012,
+        "mean_ms": 0.0006051,
+        "median_ms": 0.0005560000000000001,
+        "min_ms": 0.000471,
+        "stdev_ms": 0.00016514401122791117
+      }
+    },
+    {
+      "algorithm": "ML-KEM-768-AES-GCM",
+      "name": "authorized_access_end_to_end_local",
+      "samples_ns": [
+        7207754,
+        7176947,
+        7045256,
+        7151218,
+        7152420,
+        7193608,
+        7493016,
+        8036198,
+        7211993,
+        7226410
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 8.036198,
+        "mean_ms": 7.2894820000000005,
+        "median_ms": 7.200681,
+        "min_ms": 7.045256,
+        "stdev_ms": 0.28578900080265135
+      }
+    },
+    {
+      "algorithm": "ML-KEM-768-AES-GCM",
+      "name": "encrypted_envelope_download_local_storage",
+      "samples_ns": [
+        6699951,
+        6348243,
+        6503948,
+        6502296,
+        6267430,
+        6364544,
+        6220340,
+        6352942,
+        6432854,
+        6304310
+      ],
+      "summary": {
+        "count": 10,
+        "max_ms": 6.699951,
+        "mean_ms": 6.3996858,
+        "median_ms": 6.3587430000000005,
+        "min_ms": 6.22034,
+        "stdev_ms": 0.14042717597451643
+      }
+    }
+  ],
+  "protocol": {
+    "blockchain": "LocalBlockchainDouble; not a network benchmark",
+    "repeats": 10,
+    "statistics": [
+      "mean",
+      "median",
+      "stdev",
+      "min",
+      "max"
+    ],
+    "storage": "LocalStorage",
+    "timer": "time.perf_counter_ns",
+    "warmups": 2
+  },
+  "sizes": {
+    "ECC-ECDH-P256-AES-GCM": {
+      "encrypted_file_hash_bytes": 32,
+      "storage_reference_length": 37
+    },
+    "ML-KEM-768-AES-GCM": {
+      "encrypted_file_hash_bytes": 32,
+      "storage_reference_length": 37
+    }
+  },
+  "source": {
+    "path": "/home/s4d/Downloads/NS-PaperWork/06_Datasets_and_Data/EHR.csv",
+    "sha256": "7805fde036a11f011c2092450effadbe5c72329006b2438ce2c80b34725a9b80",
+    "size_bytes": 342069
+  },
+  "status": "VERIFIED_LOCAL_ONLY",
+  "unavailable_live_metrics": {
+    "blockchain_registration": "NOT_RUN: no live Anvil/Hardhat/provider configured",
+    "ipfs_download": "NOT_RUN: no live IPFS node configured",
+    "ipfs_upload": "NOT_RUN: no live IPFS node configured",
+    "tls_latency": "NOT_RUN: no deployed HTTPS endpoint configured",
+    "vps_download": "NOT_RUN: no live VPS configured",
+    "vps_upload": "NOT_RUN: no live VPS configured",
+    "wireguard_latency": "NOT_RUN: no live WireGuard tunnel configured"
+  }
+}
