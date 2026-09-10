@@ -21,5 +21,6 @@ __all__ = [
 """Reusable healthcare-encryption framework components."""
 
 from .record_storage import retrieve_encrypted_record, store_encrypted_record
+from .blockchain_client import BlockchainClient
 
-__all__ = ["retrieve_encrypted_record", "store_encrypted_record"]
+__all__ = ["BlockchainClient", "retrieve_encrypted_record", "store_encrypted_record"]
