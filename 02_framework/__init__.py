@@ -18,3 +18,8 @@ __all__ = [
     "register_doctor",
     "register_patient",
 ]
+"""Reusable healthcare-encryption framework components."""
+
+from .record_storage import retrieve_encrypted_record, store_encrypted_record
+
+__all__ = ["retrieve_encrypted_record", "store_encrypted_record"]

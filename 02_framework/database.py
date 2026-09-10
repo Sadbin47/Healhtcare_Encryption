@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS medical_records (
     ipfs_cid TEXT,
     key_protection_algorithm TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    storage_backend TEXT NOT NULL DEFAULT '',
+    storage_reference TEXT,
     FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
 );
 
@@ -73,7 +75,19 @@ class Database:
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.executescript(SCHEMA)
+        self._migrate_storage_columns()
         self.connection.commit()
+
+    def _migrate_storage_columns(self) -> None:
+        """Add Phase 4 columns when opening an older Phase 2/3 database."""
+
+        columns = {row["name"] for row in self.connection.execute("PRAGMA table_info(medical_records)")}
+        if "storage_backend" not in columns:
+            self.connection.execute(
+                "ALTER TABLE medical_records ADD COLUMN storage_backend TEXT NOT NULL DEFAULT ''"
+            )
+        if "storage_reference" not in columns:
+            self.connection.execute("ALTER TABLE medical_records ADD COLUMN storage_reference TEXT")
 
     def close(self) -> None:
         self.connection.close()
@@ -173,8 +187,8 @@ class Database:
                     """
                     INSERT INTO medical_records(
                         record_id, patient_id, encrypted_file_hash, ipfs_cid,
-                        key_protection_algorithm, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        key_protection_algorithm, created_at, storage_backend, storage_reference
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record.record_id,
@@ -183,6 +197,8 @@ class Database:
                         record.ipfs_cid,
                         record.key_protection_algorithm,
                         record.created_at,
+                        record.storage_backend,
+                        record.storage_reference,
                     ),
                 )
         except sqlite3.IntegrityError as error:
@@ -193,7 +209,7 @@ class Database:
         row = self.connection.execute(
             """
             SELECT record_id, patient_id, encrypted_file_hash, ipfs_cid,
-                   key_protection_algorithm, created_at
+                   key_protection_algorithm, created_at, storage_backend, storage_reference
             FROM medical_records WHERE record_id = ?
             """,
             (record_id,),
@@ -204,12 +220,40 @@ class Database:
         rows = self.connection.execute(
             """
             SELECT record_id, patient_id, encrypted_file_hash, ipfs_cid,
-                   key_protection_algorithm, created_at
+                   key_protection_algorithm, created_at, storage_backend, storage_reference
             FROM medical_records WHERE patient_id = ? ORDER BY created_at, record_id
             """,
             (patient_id,),
         ).fetchall()
         return [MedicalRecord(**dict(row)) for row in rows]
+
+    def update_record_storage(
+        self,
+        record_id: str,
+        storage_backend: str,
+        storage_reference: str,
+    ) -> Optional[MedicalRecord]:
+        """Persist a backend reference after an encrypted upload succeeds."""
+
+        if not isinstance(storage_backend, str) or not storage_backend.strip():
+            raise ValueError("storage_backend must be a non-empty string")
+        if not isinstance(storage_reference, str) or not storage_reference.strip():
+            raise ValueError("storage_reference must be a non-empty string")
+        backend = storage_backend.strip()
+        reference = storage_reference.strip()
+        with self.transaction() as db:
+            cursor = db.execute(
+                """
+                UPDATE medical_records
+                SET storage_backend = ?, storage_reference = ?,
+                    ipfs_cid = CASE WHEN ? = 'ipfs' THEN ? ELSE NULL END
+                WHERE record_id = ?
+                """,
+                (backend, reference, backend, reference, record_id),
+            )
+            if cursor.rowcount == 0:
+                return None
+        return self.get_record(record_id)
 
     def add_access_grant(self, grant: AccessGrant) -> AccessGrant:
         if not isinstance(grant, AccessGrant):
