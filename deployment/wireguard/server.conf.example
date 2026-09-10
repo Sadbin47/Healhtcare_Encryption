@@ -1,0 +1,17 @@
+# Copy to /etc/wireguard/wg0.conf after replacing every placeholder.
+# This example contains no real key material.
+
+[Interface]
+Address = 10.77.0.1/24
+ListenPort = 51820
+PrivateKey = <SERVER_PRIVATE_KEY>
+
+# Optional forwarding rules should be managed with the VPS firewall.
+# PostUp = iptables -A FORWARD -i %i -j ACCEPT
+# PostDown = iptables -D FORWARD -i %i -j ACCEPT
+
+[Peer]
+# One peer block per authorized doctor.
+PublicKey = <DOCTOR_PUBLIC_KEY>
+# PresharedKey = <OPTIONAL_DOCTOR_PRESHARED_KEY>
+AllowedIPs = 10.77.0.2/32

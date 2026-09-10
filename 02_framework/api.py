@@ -14,6 +14,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
 try:
+    from .vpn import VPNAccessPolicy
+except ImportError:  # pragma: no cover - direct framework imports.
+    from vpn import VPNAccessPolicy
+
+try:
     from .service import HealthcareWorkflowService
 except ImportError:  # pragma: no cover - direct framework imports.
     from service import HealthcareWorkflowService
@@ -65,6 +70,17 @@ class HealthcareRequestHandler(BaseHTTPRequestHandler):
     server_version = "HealthcareWorkflowAPI/1"
     sys_version = ""
 
+    def _vpn_allowed(self) -> bool:
+        policy = getattr(self.server, "vpn_policy", None)
+        if policy is None:
+            return True
+        try:
+            policy.require_peer(self.client_address[0])
+        except PermissionError:
+            self._response(403, {"error": "vpn_network_required"})
+            return False
+        return True
+
     def _response(self, status: int, value: dict[str, Any]) -> None:
         body = json.dumps(value, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
@@ -76,6 +92,8 @@ class HealthcareRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API.
+        if not self._vpn_allowed():
+            return
         try:
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
@@ -101,10 +119,38 @@ class HealthcareRequestHandler(BaseHTTPRequestHandler):
 class HealthcareHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], api: HealthcareAPI) -> None:
+    def __init__(
+        self,
+        address: tuple[str, int],
+        api: HealthcareAPI,
+        vpn_policy: VPNAccessPolicy | None = None,
+    ) -> None:
         self.api = api
+        self.vpn_policy = vpn_policy
         super().__init__(address, HealthcareRequestHandler)
 
 
-def create_server(host: str, port: int, api: HealthcareAPI) -> HealthcareHTTPServer:
-    return HealthcareHTTPServer((host, port), api)
+def create_server(
+    host: str,
+    port: int,
+    api: HealthcareAPI,
+    *,
+    vpn_network: str | None = None,
+    vpn_interface_address: str | None = None,
+) -> HealthcareHTTPServer:
+    """Create an API server, optionally enforcing WireGuard-only access.
+
+    Production deployment must provide both VPN arguments. Omitting them is
+    retained for local unit tests and non-network service composition only.
+    """
+
+    if (vpn_network is None) != (vpn_interface_address is None):
+        raise ValueError("vpn_network and vpn_interface_address must be supplied together")
+    policy = (
+        VPNAccessPolicy.create(vpn_network, vpn_interface_address)
+        if vpn_network is not None and vpn_interface_address is not None
+        else None
+    )
+    if policy is not None and host != vpn_interface_address:
+        raise ValueError("VPN-enforced API must bind to the configured WireGuard interface address")
+    return HealthcareHTTPServer((host, port), api, policy)

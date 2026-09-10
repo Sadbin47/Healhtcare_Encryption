@@ -1,0 +1,13 @@
+# Copy to the doctor's WireGuard client after replacing placeholders.
+# This example contains no real key material.
+
+[Interface]
+Address = 10.77.0.2/32
+PrivateKey = <DOCTOR_PRIVATE_KEY>
+
+[Peer]
+PublicKey = <SERVER_PUBLIC_KEY>
+# PresharedKey = <OPTIONAL_DOCTOR_PRESHARED_KEY>
+Endpoint = <VPS_PUBLIC_HOSTNAME_OR_IP>:51820
+AllowedIPs = 10.77.0.1/32
+PersistentKeepalive = 25
