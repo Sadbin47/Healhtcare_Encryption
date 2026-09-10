@@ -235,6 +235,57 @@ class Database:
             raise self._integrity_error(error) from error
         return grant
 
+    def upsert_access_grant(self, grant: AccessGrant) -> AccessGrant:
+        """Create or reactivate a grant for the same patient/doctor/record."""
+
+        if not isinstance(grant, AccessGrant):
+            raise TypeError("grant must be an AccessGrant")
+        try:
+            with self.transaction() as db:
+                db.execute(
+                    """
+                    INSERT INTO access_grants(
+                        patient_id, doctor_id, record_id, permission, granted_at, revoked_at
+                    ) VALUES (?, ?, ?, ?, ?, NULL)
+                    ON CONFLICT(patient_id, doctor_id, record_id) DO UPDATE SET
+                        permission = excluded.permission,
+                        granted_at = excluded.granted_at,
+                        revoked_at = NULL
+                    """,
+                    (
+                        grant.patient_id,
+                        grant.doctor_id,
+                        grant.record_id,
+                        grant.permission,
+                        grant.granted_at,
+                    ),
+                )
+        except sqlite3.IntegrityError as error:
+            raise self._integrity_error(error) from error
+        return self.get_access_grant(grant.patient_id, grant.doctor_id, grant.record_id)  # type: ignore[return-value]
+
+    def revoke_access_grant(
+        self,
+        patient_id: str,
+        doctor_id: str,
+        record_id: str,
+        revoked_at: str,
+    ) -> Optional[AccessGrant]:
+        """Mark an existing grant revoked and return its new state."""
+
+        with self.transaction() as db:
+            cursor = db.execute(
+                """
+                UPDATE access_grants
+                SET revoked_at = ?
+                WHERE patient_id = ? AND doctor_id = ? AND record_id = ?
+                """,
+                (revoked_at, patient_id, doctor_id, record_id),
+            )
+            if cursor.rowcount == 0:
+                return None
+        return self.get_access_grant(patient_id, doctor_id, record_id)
+
     def get_access_grant(
         self,
         patient_id: str,
@@ -258,5 +309,17 @@ class Database:
             FROM access_grants WHERE record_id = ? ORDER BY granted_at, doctor_id
             """,
             (record_id,),
+        ).fetchall()
+        return [AccessGrant(**dict(row)) for row in rows]
+
+    def list_access_grants_for_doctor(self, doctor_id: str) -> list[AccessGrant]:
+        """Return all grants associated with a doctor, including revoked grants."""
+
+        rows = self.connection.execute(
+            """
+            SELECT patient_id, doctor_id, record_id, permission, granted_at, revoked_at
+            FROM access_grants WHERE doctor_id = ? ORDER BY granted_at, record_id
+            """,
+            (doctor_id,),
         ).fetchall()
         return [AccessGrant(**dict(row)) for row in rows]
