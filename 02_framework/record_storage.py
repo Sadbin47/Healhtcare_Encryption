@@ -57,7 +57,7 @@ def retrieve_encrypted_record(
         raise StorageError(
             f"record is stored in {record.storage_backend}, not {store.backend_name}"
         )
-    reference = record.storage_reference or record.ipfs_cid
+    reference = record.storage_reference
     if not reference:
         raise StorageError("record has no storage reference")
     envelope = store.download_encrypted_record(reference)

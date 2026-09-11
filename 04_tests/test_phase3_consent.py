@@ -40,7 +40,6 @@ class Phase3ConsentTests(unittest.TestCase):
                 "record-001",
                 self.patient.patient_id,
                 "a" * 64,
-                None,
                 "ML-KEM-768-AES-GCM",
             )
         )

@@ -254,7 +254,6 @@ class HealthcareWorkflowService:
                 record_id=record_id,
                 patient_id=patient_id,
                 encrypted_file_hash=envelope.ciphertext_hash,
-                ipfs_cid=reference if self.storage.backend_name == "ipfs" else None,
                 key_protection_algorithm=algorithm,
                 storage_backend=self.storage.backend_name,
                 storage_reference=reference,
@@ -318,10 +317,10 @@ class HealthcareWorkflowService:
         if self.private_key_resolver is None:
             raise ValueError("private_key_resolver is required for doctor retrieval")
         try:
-            cid, chain_hash, _ = self.blockchain.get_record_metadata(record_id)
+            storage_reference, chain_hash, _ = self.blockchain.get_record_metadata(record_id)
             if chain_hash.hex() != record.encrypted_file_hash.lower().removeprefix("0x"):
                 raise StorageError("blockchain hash does not match local record metadata")
-            envelope = self.storage.download_encrypted_record(cid)
+            envelope = self.storage.download_encrypted_record(storage_reference)
             if envelope.record_id != record_id or envelope.ciphertext_hash != record.encrypted_file_hash:
                 raise StorageError("retrieved envelope does not match record metadata")
             private_key = self.private_key_resolver(doctor_id)

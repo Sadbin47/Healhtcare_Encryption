@@ -233,8 +233,6 @@
   "status": "VERIFIED_LOCAL_ONLY",
   "unavailable_live_metrics": {
     "blockchain_registration": "NOT_RUN: no live Anvil/Hardhat/provider configured",
-    "ipfs_download": "NOT_RUN: no live IPFS node configured",
-    "ipfs_upload": "NOT_RUN: no live IPFS node configured",
     "tls_latency": "NOT_RUN: no deployed HTTPS endpoint configured",
     "vps_download": "NOT_RUN: no live VPS configured",
     "vps_upload": "NOT_RUN: no live VPS configured",

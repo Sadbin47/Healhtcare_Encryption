@@ -257,8 +257,6 @@
   "status": "VERIFIED_LOCAL_ONLY",
   "unavailable_live_metrics": {
     "blockchain_registration": "NOT_RUN: no live Anvil/Hardhat/provider configured",
-    "ipfs_download": "NOT_RUN: no live IPFS node configured",
-    "ipfs_upload": "NOT_RUN: no live IPFS node configured",
     "vps_download": "NOT_RUN: no live VPS configured",
     "vps_upload": "NOT_RUN: no live VPS configured",
     "wireguard_latency": "NOT_RUN: no live WireGuard tunnel configured"

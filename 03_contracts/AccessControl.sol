@@ -6,7 +6,7 @@ pragma solidity ^0.8.24;
 ///         AES keys, and private keys must remain off-chain.
 contract AccessControl {
     struct RecordMetadata {
-        string cid;
+        string storageReference;
         bytes32 fileHash;
         address registeredBy;
         bool exists;
@@ -17,7 +17,7 @@ contract AccessControl {
 
     event RecordRegistered(
         bytes32 indexed recordId,
-        string cid,
+        string storageReference,
         bytes32 fileHash,
         address indexed registeredBy
     );
@@ -45,22 +45,22 @@ contract AccessControl {
 
     function registerRecord(
         string calldata recordId,
-        string calldata cid,
+        string calldata storageReference,
         bytes32 fileHash
     ) external {
         require(bytes(recordId).length > 0, "empty record id");
-        require(bytes(cid).length > 0, "empty cid");
+        require(bytes(storageReference).length > 0, "empty storage reference");
         require(fileHash != bytes32(0), "empty file hash");
         bytes32 key = _recordKey(recordId);
         require(!records[key].exists, "record already registered");
 
         records[key] = RecordMetadata({
-            cid: cid,
+            storageReference: storageReference,
             fileHash: fileHash,
             registeredBy: msg.sender,
             exists: true
         });
-        emit RecordRegistered(key, cid, fileHash, msg.sender);
+        emit RecordRegistered(key, storageReference, fileHash, msg.sender);
     }
 
     function grantAccess(
@@ -92,12 +92,12 @@ contract AccessControl {
     function getRecordMetadata(
         string calldata recordId
     ) external view existingRecord(recordId) returns (
-        string memory cid,
+        string memory storageReference,
         bytes32 fileHash,
         address registeredBy
     ) {
         RecordMetadata storage record = records[_recordKey(recordId)];
-        return (record.cid, record.fileHash, record.registeredBy);
+        return (record.storageReference, record.fileHash, record.registeredBy);
     }
 
     /// @notice Emit an access event only after the caller's grant is checked.

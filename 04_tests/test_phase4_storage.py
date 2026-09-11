@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-import sqlite3
 import tempfile
 import threading
 import unittest
@@ -22,7 +21,6 @@ from identity import register_doctor, register_patient  # noqa: E402
 from models import MedicalRecord  # noqa: E402
 from record_storage import retrieve_encrypted_record, store_encrypted_record  # noqa: E402
 from storage import (  # noqa: E402
-    IPFSStorage,
     LocalStorage,
     RecordNotFound,
     StorageError,
@@ -85,20 +83,6 @@ class Phase4StorageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             VPSStorage("http://storage.example.test", "secret-token")
 
-    def test_ipfs_client_upload_and_gateway_round_trip(self) -> None:
-        envelope = make_envelope()
-
-        def requester(method, url, headers, body, timeout):
-            if method == "POST":
-                self.assertNotIn(b"encrypted EHR test bytes", body or b"")
-                return 200, b'{"Name":"envelope.json","Hash":"bafy-test-cid"}\n'
-            return 200, envelope.to_json().encode("utf-8")
-
-        store = IPFSStorage(requester=requester)
-        cid = store.upload_encrypted_record(envelope)
-        self.assertEqual(cid, "bafy-test-cid")
-        self.assertEqual(store.download_encrypted_record(cid), envelope)
-
     def test_vps_api_and_client_round_trip(self) -> None:
         envelope = make_envelope()
         with tempfile.TemporaryDirectory() as directory:
@@ -128,7 +112,6 @@ class Phase4StorageTests(unittest.TestCase):
                     "record-001",
                     patient.patient_id,
                     envelope.ciphertext_hash,
-                    None,
                     envelope.key_protection,
                 )
             )
@@ -143,35 +126,21 @@ class Phase4StorageTests(unittest.TestCase):
                 retrieve_encrypted_record(database, store, patient.patient_id, doctor.doctor_id, "record-001"),
                 envelope,
             )
-            other_backend = IPFSStorage(requester=lambda *args: (500, b""))
+            other_backend = VPSStorage(
+                "https://storage.example.test", "token", requester=lambda *args: (500, b"")
+            )
             with self.assertRaisesRegex(StorageError, "stored in local"):
                 retrieve_encrypted_record(
                     database, other_backend, patient.patient_id, doctor.doctor_id, "record-001"
                 )
 
-    def test_existing_phase2_database_is_migrated(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "metadata.sqlite3"
-            connection = sqlite3.connect(path)
-            connection.executescript(
-                """
-                CREATE TABLE medical_records (
-                    record_id TEXT PRIMARY KEY,
-                    patient_id TEXT NOT NULL,
-                    encrypted_file_hash TEXT NOT NULL,
-                    ipfs_cid TEXT,
-                    key_protection_algorithm TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                );
-                """
-            )
-            connection.close()
-            with Database(path) as database:
-                columns = {
-                    row["name"] for row in database.connection.execute("PRAGMA table_info(medical_records)")
-                }
-                self.assertIn("storage_backend", columns)
-                self.assertIn("storage_reference", columns)
+    def test_fresh_schema_has_storage_reference_only(self) -> None:
+        with Database() as database:
+            columns = {
+                row["name"] for row in database.connection.execute("PRAGMA table_info(medical_records)")
+            }
+            self.assertIn("storage_backend", columns)
+            self.assertIn("storage_reference", columns)
 
 
 if __name__ == "__main__":

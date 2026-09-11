@@ -2,7 +2,7 @@
 
 These tests intentionally use local storage and a deterministic blockchain
 double. They verify the application composition without claiming that a live
-IPFS node, EVM chain, or VPN tunnel was deployed.
+EVM chain or VPN tunnel was deployed.
 """
 
 from __future__ import annotations
@@ -65,11 +65,11 @@ class FakeBlockchain:
         self.permissions: set[tuple[str, str]] = set()
         self.access_events: list[tuple[str, str | None]] = []
 
-    def register_record(self, record_id, cid, file_hash, **kwargs):
+    def register_record(self, record_id, storage_reference, file_hash, **kwargs):
         if record_id in self.records:
             raise ValueError("record already registered")
         digest = bytes.fromhex(file_hash) if isinstance(file_hash, str) else bytes(file_hash)
-        self.records[record_id] = (cid, digest, kwargs.get("sender"))
+        self.records[record_id] = (storage_reference, digest, kwargs.get("sender"))
         return "tx-register"
 
     def grant_access(self, record_id, doctor_address, **kwargs):
@@ -212,11 +212,11 @@ class Phase9IntegrationTests(unittest.TestCase):
             database.close()
             storage_root.cleanup()
 
-    def test_invalid_cid_and_missing_file_are_rejected(self) -> None:
+    def test_invalid_storage_reference_and_missing_file_are_rejected(self) -> None:
         database, storage_root, blockchain, audit, service, _private_key, record = self._upload_and_authorize(ECC_ALGORITHM)
         try:
             blockchain.records[record.record_id] = (
-                "invalid-cid",
+                "invalid-reference",
                 bytes.fromhex(record.encrypted_file_hash),
                 REGISTRAR_ADDRESS,
             )

@@ -1,6 +1,6 @@
 """Benchmark the reusable cryptography layer with local, repeatable timings.
 
-This benchmark intentionally excludes live IPFS, VPS, blockchain, TLS, and
+This benchmark intentionally excludes live VPS, blockchain, TLS, and
 WireGuard operations. It measures the cryptographic work that is available in
 the local framework and writes raw samples plus summary statistics. No
 plaintext or secret key material is written to the result files.
@@ -187,8 +187,6 @@ def run_benchmark(source: str | Path, *, repeats: int = 10, warmups: int = 2) ->
         "metrics": metrics,
         "sizes": sizes,
         "unavailable_live_metrics": {
-            "ipfs_upload": "NOT_RUN: no live IPFS node configured",
-            "ipfs_download": "NOT_RUN: no live IPFS node configured",
             "vps_upload": "NOT_RUN: no live VPS configured",
             "vps_download": "NOT_RUN: no live VPS configured",
             "blockchain_registration": "NOT_RUN: no live Anvil/Hardhat/provider configured",

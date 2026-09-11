@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS medical_records (
     record_id TEXT PRIMARY KEY,
     patient_id TEXT NOT NULL,
     encrypted_file_hash TEXT NOT NULL,
-    ipfs_cid TEXT,
     key_protection_algorithm TEXT NOT NULL,
     created_at TEXT NOT NULL,
     storage_backend TEXT NOT NULL DEFAULT '',
@@ -75,19 +74,7 @@ class Database:
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.executescript(SCHEMA)
-        self._migrate_storage_columns()
         self.connection.commit()
-
-    def _migrate_storage_columns(self) -> None:
-        """Add Phase 4 columns when opening an older Phase 2/3 database."""
-
-        columns = {row["name"] for row in self.connection.execute("PRAGMA table_info(medical_records)")}
-        if "storage_backend" not in columns:
-            self.connection.execute(
-                "ALTER TABLE medical_records ADD COLUMN storage_backend TEXT NOT NULL DEFAULT ''"
-            )
-        if "storage_reference" not in columns:
-            self.connection.execute("ALTER TABLE medical_records ADD COLUMN storage_reference TEXT")
 
     def close(self) -> None:
         self.connection.close()
@@ -186,15 +173,14 @@ class Database:
                 db.execute(
                     """
                     INSERT INTO medical_records(
-                        record_id, patient_id, encrypted_file_hash, ipfs_cid,
+                        record_id, patient_id, encrypted_file_hash,
                         key_protection_algorithm, created_at, storage_backend, storage_reference
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record.record_id,
                         record.patient_id,
                         record.encrypted_file_hash,
-                        record.ipfs_cid,
                         record.key_protection_algorithm,
                         record.created_at,
                         record.storage_backend,
@@ -208,7 +194,7 @@ class Database:
     def get_record(self, record_id: str) -> Optional[MedicalRecord]:
         row = self.connection.execute(
             """
-            SELECT record_id, patient_id, encrypted_file_hash, ipfs_cid,
+            SELECT record_id, patient_id, encrypted_file_hash,
                    key_protection_algorithm, created_at, storage_backend, storage_reference
             FROM medical_records WHERE record_id = ?
             """,
@@ -219,7 +205,7 @@ class Database:
     def list_records_for_patient(self, patient_id: str) -> list[MedicalRecord]:
         rows = self.connection.execute(
             """
-            SELECT record_id, patient_id, encrypted_file_hash, ipfs_cid,
+            SELECT record_id, patient_id, encrypted_file_hash,
                    key_protection_algorithm, created_at, storage_backend, storage_reference
             FROM medical_records WHERE patient_id = ? ORDER BY created_at, record_id
             """,
@@ -245,11 +231,10 @@ class Database:
             cursor = db.execute(
                 """
                 UPDATE medical_records
-                SET storage_backend = ?, storage_reference = ?,
-                    ipfs_cid = CASE WHEN ? = 'ipfs' THEN ? ELSE NULL END
+                SET storage_backend = ?, storage_reference = ?
                 WHERE record_id = ?
                 """,
-                (backend, reference, backend, reference, record_id),
+                (backend, reference, record_id),
             )
             if cursor.rowcount == 0:
                 return None

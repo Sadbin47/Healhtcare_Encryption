@@ -22,7 +22,7 @@ CONTRACT_ABI: list[dict[str, Any]] = [
     {
         "inputs": [
             {"internalType": "string", "name": "recordId", "type": "string"},
-            {"internalType": "string", "name": "cid", "type": "string"},
+            {"internalType": "string", "name": "storageReference", "type": "string"},
             {"internalType": "bytes32", "name": "fileHash", "type": "bytes32"},
         ],
         "name": "registerRecord",
@@ -64,7 +64,7 @@ CONTRACT_ABI: list[dict[str, Any]] = [
         "inputs": [{"internalType": "string", "name": "recordId", "type": "string"}],
         "name": "getRecordMetadata",
         "outputs": [
-            {"internalType": "string", "name": "cid", "type": "string"},
+            {"internalType": "string", "name": "storageReference", "type": "string"},
             {"internalType": "bytes32", "name": "fileHash", "type": "bytes32"},
             {"internalType": "address", "name": "registeredBy", "type": "address"},
         ],
@@ -189,17 +189,17 @@ class BlockchainClient:
     def register_record(
         self,
         record_id: str,
-        cid: str,
+        storage_reference: str,
         file_hash: str | bytes,
         *,
         sender: Optional[str] = None,
     ) -> Any:
         if not isinstance(record_id, str) or not record_id.strip():
             raise BlockchainValidationError("record_id must be a non-empty string")
-        if not isinstance(cid, str) or not cid.strip():
-            raise BlockchainValidationError("cid must be a non-empty string")
+        if not isinstance(storage_reference, str) or not storage_reference.strip():
+            raise BlockchainValidationError("storage_reference must be a non-empty string")
         digest = normalize_file_hash(file_hash)
-        function = self.contract.functions.registerRecord(record_id, cid, digest)
+        function = self.contract.functions.registerRecord(record_id, storage_reference, digest)
         return self._send(function, sender)
 
     def grant_access(self, record_id: str, doctor_address: str, *, sender: Optional[str] = None) -> Any:
@@ -227,12 +227,12 @@ class BlockchainClient:
         if not isinstance(record_id, str) or not record_id.strip():
             raise BlockchainValidationError("record_id must be a non-empty string")
         try:
-            cid, file_hash, registered_by = self.contract.functions.getRecordMetadata(record_id).call()
+            storage_reference, file_hash, registered_by = self.contract.functions.getRecordMetadata(record_id).call()
         except Exception as error:
             raise BlockchainError("blockchain metadata lookup failed") from error
         if isinstance(file_hash, str):
             file_hash = normalize_file_hash(file_hash)
-        return str(cid), bytes(file_hash), str(registered_by)
+        return str(storage_reference), bytes(file_hash), str(registered_by)
 
     def record_access(self, record_id: str, *, sender: Optional[str] = None) -> Any:
         if not isinstance(record_id, str) or not record_id.strip():

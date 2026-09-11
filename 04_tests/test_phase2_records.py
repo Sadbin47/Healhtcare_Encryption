@@ -33,7 +33,6 @@ class Phase2RecordTests(unittest.TestCase):
                     record_id="record-001",
                     patient_id=patient.patient_id,
                     encrypted_file_hash="a" * 64,
-                    ipfs_cid=None,
                     key_protection_algorithm=doctor.key_algorithm,
                 )
             )
@@ -60,7 +59,6 @@ class Phase2RecordTests(unittest.TestCase):
                         "record-001",
                         "missing-patient",
                         "b" * 64,
-                        None,
                         "ML-KEM-768-AES-GCM",
                     )
                 )

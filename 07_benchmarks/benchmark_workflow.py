@@ -1,7 +1,7 @@
 """Benchmark the complete local workflow for ECC and ML-KEM branches.
 
 The benchmark uses LocalStorage and a deterministic blockchain double. It does
-not pretend to measure a real blockchain, IPFS, VPS, TLS, or WireGuard path.
+not pretend to measure a real blockchain, VPS, TLS, or WireGuard path.
 """
 
 from __future__ import annotations
@@ -51,8 +51,8 @@ class LocalBlockchainDouble:
         self.permissions: set[tuple[str, str]] = set()
         self.access_events: list[tuple[str, str | None]] = []
 
-    def register_record(self, record_id, cid, file_hash, **kwargs):
-        self.records[record_id] = (cid, bytes.fromhex(file_hash), kwargs.get("sender"))
+    def register_record(self, record_id, storage_reference, file_hash, **kwargs):
+        self.records[record_id] = (storage_reference, bytes.fromhex(file_hash), kwargs.get("sender"))
         return "local-register"
 
     def grant_access(self, record_id, doctor_address, **_kwargs):
@@ -208,8 +208,6 @@ def run_benchmark(source: str | Path, *, repeats: int = 10, warmups: int = 2) ->
         "metrics": metrics,
         "sizes": sizes,
         "unavailable_live_metrics": {
-            "ipfs_upload": "NOT_RUN: no live IPFS node configured",
-            "ipfs_download": "NOT_RUN: no live IPFS node configured",
             "vps_upload": "NOT_RUN: no live VPS configured",
             "vps_download": "NOT_RUN: no live VPS configured",
             "blockchain_registration": "NOT_RUN: no live Anvil/Hardhat/provider configured",

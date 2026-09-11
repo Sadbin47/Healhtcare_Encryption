@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-BENCHMARKS = Path(__file__).parents[1] / "benchmarks"
+BENCHMARKS = Path(__file__).parents[1] / "07_benchmarks"
 if str(BENCHMARKS) not in sys.path:
     sys.path.insert(0, str(BENCHMARKS))
 

@@ -63,7 +63,7 @@ class FakeFunctions:
         return FakeCall(self.allowed)
 
     def getRecordMetadata(self, *args):
-        return FakeCall(("bafy-test-cid", bytes.fromhex(FILE_HASH), PATIENT))
+        return FakeCall(("object-reference", bytes.fromhex(FILE_HASH), PATIENT))
 
 
 class FakeContract:
@@ -78,7 +78,7 @@ class Phase5BlockchainTests(unittest.TestCase):
 
     def test_required_operations_use_expected_contract_methods(self) -> None:
         self.assertEqual(
-            self.client.register_record("record-001", "bafy-test-cid", FILE_HASH, sender=PATIENT),
+            self.client.register_record("record-001", "object-reference", FILE_HASH, sender=PATIENT),
             "tx-registerRecord",
         )
         self.assertEqual(self.client.grant_access("record-001", DOCTOR, sender=PATIENT), "tx-grantAccess")
@@ -86,8 +86,8 @@ class Phase5BlockchainTests(unittest.TestCase):
         self.contract.functions.allowed = True
         self.assertTrue(self.client.check_access("record-001", DOCTOR))
         self.assertEqual(self.client.record_access("record-001", sender=DOCTOR), "tx-recordAccess")
-        cid, digest, owner = self.client.get_record_metadata("record-001")
-        self.assertEqual(cid, "bafy-test-cid")
+        storage_reference, digest, owner = self.client.get_record_metadata("record-001")
+        self.assertEqual(storage_reference, "object-reference")
         self.assertEqual(digest, bytes.fromhex(FILE_HASH))
         self.assertEqual(owner, PATIENT)
         self.assertEqual(len(self.contract.functions.calls), 4)
@@ -99,12 +99,12 @@ class Phase5BlockchainTests(unittest.TestCase):
         with self.assertRaises(BlockchainValidationError):
             self.client.grant_access("record-001", "0x0", sender=PATIENT)
         with self.assertRaises(BlockchainValidationError):
-            self.client.register_record("", "cid", FILE_HASH, sender=PATIENT)
+            self.client.register_record("", "reference", FILE_HASH, sender=PATIENT)
 
     def test_contract_does_not_contain_sensitive_data_fields(self) -> None:
         source = (ROOT / "03_contracts" / "AccessControl.sol").read_text(encoding="utf-8").lower()
         self.assertIn("mapping(bytes32 => recordmetadata)", source)
-        self.assertIn("string cid", source)
+        self.assertIn("string storagereference", source)
         self.assertIn("bytes32 filehash", source)
         for forbidden in ("ehrplaintext", "aeskey", "privatekey", "encryptedfile"):
             self.assertNotIn(forbidden, source)

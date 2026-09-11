@@ -9,7 +9,7 @@ AES-256-GCM      -> EHR confidentiality and integrity
 ECC/ML-KEM       -> AES-key protection
 Blockchain       -> record metadata and authorization state
 Local consent    -> patient permission state
-IPFS/VPS storage -> encrypted-envelope storage
+VPS storage -> encrypted-envelope storage
 ```
 
 ## Address plan

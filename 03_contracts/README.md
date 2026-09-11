@@ -5,7 +5,7 @@
 It stores only:
 
 - a hashed logical record identifier;
-- an encrypted-object CID/reference;
+- an opaque encrypted-object storage reference;
 - the SHA-256 hash of the encrypted envelope;
 - the registering application/patient address; and
 - doctor permission state.

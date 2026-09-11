@@ -50,10 +50,10 @@ class FakeBlockchain:
         self.permissions = set()
         self.access_events = []
 
-    def register_record(self, record_id, cid, file_hash, **kwargs):
+    def register_record(self, record_id, storage_reference, file_hash, **kwargs):
         if record_id in self.records:
             raise ValueError("duplicate record")
-        self.records[record_id] = (cid, bytes.fromhex(file_hash) if isinstance(file_hash, str) else file_hash, kwargs.get("sender"))
+        self.records[record_id] = (storage_reference, bytes.fromhex(file_hash) if isinstance(file_hash, str) else file_hash, kwargs.get("sender"))
         return "tx-register"
 
     def grant_access(self, record_id, doctor_address, **kwargs):

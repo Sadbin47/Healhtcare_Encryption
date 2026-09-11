@@ -65,7 +65,6 @@ class MedicalRecord:
     record_id: str
     patient_id: str
     encrypted_file_hash: str
-    ipfs_cid: Optional[str]
     key_protection_algorithm: str
     created_at: str = ""
     storage_backend: str = ""
@@ -80,15 +79,11 @@ class MedicalRecord:
         ):
             object.__setattr__(self, field_name, require_text(getattr(self, field_name), field_name))
         if not self.storage_backend:
-            object.__setattr__(self, "storage_backend", "ipfs" if self.ipfs_cid else "")
+            object.__setattr__(self, "storage_backend", "")
         else:
             object.__setattr__(self, "storage_backend", require_text(self.storage_backend, "storage_backend"))
-        if self.ipfs_cid is not None:
-            object.__setattr__(self, "ipfs_cid", require_text(self.ipfs_cid, "ipfs_cid"))
         if self.storage_reference is not None:
             object.__setattr__(self, "storage_reference", require_text(self.storage_reference, "storage_reference"))
-        elif self.ipfs_cid is not None:
-            object.__setattr__(self, "storage_reference", self.ipfs_cid)
         if not self.created_at:
             object.__setattr__(self, "created_at", utc_now())
         else:
