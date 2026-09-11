@@ -22,6 +22,10 @@ try:
     from .service import HealthcareWorkflowService
 except ImportError:  # pragma: no cover - direct framework imports.
     from service import HealthcareWorkflowService
+try:
+    from .auth import AuthenticationError, TokenAuthenticator
+except ImportError:  # pragma: no cover
+    from auth import AuthenticationError, TokenAuthenticator
 
 
 class HealthcareAPI:
@@ -30,13 +34,26 @@ class HealthcareAPI:
         service: HealthcareWorkflowService,
         *,
         authenticate: Callable[[dict[str, Any]], bool] | None = None,
+        authenticator: TokenAuthenticator | None = None,
     ) -> None:
         self.service = service
         self.authenticate = authenticate or (lambda _payload: False)
+        self.authenticator = authenticator
 
-    def upload(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _authenticate(self, payload: dict[str, Any], *, role: str | tuple[str, ...], actor_id: str | None = None) -> None:
+        if self.authenticator is not None:
+            roles = (role,) if isinstance(role, str) else role
+            principal = self.authenticator.principal_for(payload.get("token"))
+            if principal.role not in {item.lower() for item in roles}:
+                raise AuthenticationError("request role is not permitted")
+            if actor_id is not None and principal.role != "admin" and principal.actor_id != actor_id:
+                raise AuthenticationError("request actor does not match authenticated identity")
+            return
         if not self.authenticate(payload):
             raise PermissionError("request authentication failed")
+
+    def upload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._authenticate(payload, role=("patient", "admin"), actor_id=payload.get("patient_id"))
         try:
             ehr = base64.b64decode(payload["ehr_base64"], validate=True)
             record = self.service.upload_record(
@@ -56,17 +73,26 @@ class HealthcareAPI:
         }
 
     def request(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if not self.authenticate(payload):
-            raise PermissionError("request authentication failed")
+        self._authenticate(payload, role="doctor", actor_id=payload.get("doctor_id"))
         try:
-            plaintext = self.service.request_record(payload["doctor_id"], payload["record_id"])
+            envelope, record = self.service.retrieve_encrypted_record(
+                payload["doctor_id"], payload["record_id"]
+            )
         except (KeyError, ValueError, TypeError) as error:
             raise ValueError("invalid record request") from error
-        return {"record_id": payload["record_id"], "ehr_base64": base64.b64encode(plaintext).decode("ascii")}
+        serialized = envelope.to_json().encode("utf-8")
+        return {
+            "record_id": record.record_id,
+            "patient_id": record.patient_id,
+            "storage_backend": record.storage_backend,
+            "storage_reference": record.storage_reference,
+            "encrypted_file_hash": record.encrypted_file_hash,
+            "envelope": envelope.to_dict(),
+            "envelope_base64": base64.b64encode(serialized).decode("ascii"),
+        }
 
     def grant_access(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if not self.authenticate(payload):
-            raise PermissionError("request authentication failed")
+        self._authenticate(payload, role=("patient", "admin"), actor_id=payload.get("patient_id"))
         try:
             grant = self.service.grant_doctor_access(
                 payload["patient_id"], payload["doctor_id"], payload["record_id"]
@@ -82,8 +108,7 @@ class HealthcareAPI:
         }
 
     def revoke_access(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if not self.authenticate(payload):
-            raise PermissionError("request authentication failed")
+        self._authenticate(payload, role=("patient", "admin"), actor_id=payload.get("patient_id"))
         try:
             grant = self.service.revoke_doctor_access(
                 payload["patient_id"], payload["doctor_id"], payload["record_id"]
@@ -131,19 +156,25 @@ class HealthcareRequestHandler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("request body must be a JSON object")
+            authorization = self.headers.get("Authorization", "")
+            if authorization.lower().startswith("bearer ") and "token" not in payload:
+                payload["token"] = authorization[7:].strip()
+            api = self.server.api
             if self.path == "/records":
-                result = self.api.upload(payload)
+                result = api.upload(payload)
             elif self.path == "/records/request":
-                result = self.api.request(payload)
+                result = api.request(payload)
             elif self.path == "/access/grant":
-                result = self.api.grant_access(payload)
+                result = api.grant_access(payload)
             elif self.path == "/access/revoke":
-                result = self.api.revoke_access(payload)
+                result = api.revoke_access(payload)
             else:
                 self._response(404, {"error": "not_found"})
                 return
             self._response(200, result)
-        except PermissionError as error:
+        except (PermissionError, AuthenticationError) as error:
             self._response(403, {"error": str(error)})
         except (ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
             self._response(400, {"error": str(error)})

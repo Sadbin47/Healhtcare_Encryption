@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional, Union
@@ -70,14 +71,21 @@ class Database:
         self.path = str(path)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(self.path)
+        # The HTTP server is threaded.  Serialize all shared-connection access
+        # with a process-local lock to keep SQLite operations deterministic.
+        self.connection = sqlite3.connect(self.path, check_same_thread=False, timeout=30.0)
+        self._lock = threading.RLock()
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
+        self.connection.execute("PRAGMA busy_timeout = 30000")
+        if self.path != ":memory:":
+            self.connection.execute("PRAGMA journal_mode = WAL")
         self.connection.executescript(SCHEMA)
         self.connection.commit()
 
     def close(self) -> None:
-        self.connection.close()
+        with self._lock:
+            self.connection.close()
 
     def __enter__(self) -> "Database":
         return self
@@ -87,12 +95,13 @@ class Database:
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
-        try:
-            yield self.connection
-            self.connection.commit()
-        except Exception:
-            self.connection.rollback()
-            raise
+        with self._lock:
+            try:
+                yield self.connection
+                self.connection.commit()
+            except Exception:
+                self.connection.rollback()
+                raise
 
     @staticmethod
     def _integrity_error(error: sqlite3.IntegrityError) -> ValueError:
@@ -117,16 +126,18 @@ class Database:
         return patient
 
     def get_patient(self, patient_id: str) -> Optional[Patient]:
-        row = self.connection.execute(
-            "SELECT patient_id, display_name_or_alias, created_at FROM patients WHERE patient_id = ?",
-            (patient_id,),
-        ).fetchone()
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT patient_id, display_name_or_alias, created_at FROM patients WHERE patient_id = ?",
+                (patient_id,),
+            ).fetchone()
         return None if row is None else Patient(**dict(row))
 
     def list_patients(self) -> list[Patient]:
-        rows = self.connection.execute(
-            "SELECT patient_id, display_name_or_alias, created_at FROM patients ORDER BY patient_id"
-        ).fetchall()
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT patient_id, display_name_or_alias, created_at FROM patients ORDER BY patient_id"
+            ).fetchall()
         return [Patient(**dict(row)) for row in rows]
 
     def add_doctor(self, doctor: Doctor) -> Doctor:
@@ -153,16 +164,18 @@ class Database:
         return doctor
 
     def get_doctor(self, doctor_id: str) -> Optional[Doctor]:
-        row = self.connection.execute(
-            "SELECT doctor_id, name, public_key, key_algorithm, created_at FROM doctors WHERE doctor_id = ?",
-            (doctor_id,),
-        ).fetchone()
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT doctor_id, name, public_key, key_algorithm, created_at FROM doctors WHERE doctor_id = ?",
+                (doctor_id,),
+            ).fetchone()
         return None if row is None else Doctor(**dict(row))
 
     def list_doctors(self) -> list[Doctor]:
-        rows = self.connection.execute(
-            "SELECT doctor_id, name, public_key, key_algorithm, created_at FROM doctors ORDER BY doctor_id"
-        ).fetchall()
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT doctor_id, name, public_key, key_algorithm, created_at FROM doctors ORDER BY doctor_id"
+            ).fetchall()
         return [Doctor(**dict(row)) for row in rows]
 
     def add_record(self, record: MedicalRecord) -> MedicalRecord:
@@ -192,25 +205,27 @@ class Database:
         return record
 
     def get_record(self, record_id: str) -> Optional[MedicalRecord]:
-        row = self.connection.execute(
-            """
-            SELECT record_id, patient_id, encrypted_file_hash,
-                   key_protection_algorithm, created_at, storage_backend, storage_reference
-            FROM medical_records WHERE record_id = ?
-            """,
-            (record_id,),
-        ).fetchone()
+        with self._lock:
+            row = self.connection.execute(
+                """
+                SELECT record_id, patient_id, encrypted_file_hash,
+                       key_protection_algorithm, created_at, storage_backend, storage_reference
+                FROM medical_records WHERE record_id = ?
+                """,
+                (record_id,),
+            ).fetchone()
         return None if row is None else MedicalRecord(**dict(row))
 
     def list_records_for_patient(self, patient_id: str) -> list[MedicalRecord]:
-        rows = self.connection.execute(
-            """
-            SELECT record_id, patient_id, encrypted_file_hash,
-                   key_protection_algorithm, created_at, storage_backend, storage_reference
-            FROM medical_records WHERE patient_id = ? ORDER BY created_at, record_id
-            """,
-            (patient_id,),
-        ).fetchall()
+        with self._lock:
+            rows = self.connection.execute(
+                """
+                SELECT record_id, patient_id, encrypted_file_hash,
+                       key_protection_algorithm, created_at, storage_backend, storage_reference
+                FROM medical_records WHERE patient_id = ? ORDER BY created_at, record_id
+                """,
+                (patient_id,),
+            ).fetchall()
         return [MedicalRecord(**dict(row)) for row in rows]
 
     def update_record_storage(
@@ -321,34 +336,37 @@ class Database:
         doctor_id: str,
         record_id: str,
     ) -> Optional[AccessGrant]:
-        row = self.connection.execute(
-            """
-            SELECT patient_id, doctor_id, record_id, permission, granted_at, revoked_at
-            FROM access_grants
-            WHERE patient_id = ? AND doctor_id = ? AND record_id = ?
-            """,
-            (patient_id, doctor_id, record_id),
-        ).fetchone()
+        with self._lock:
+            row = self.connection.execute(
+                """
+                SELECT patient_id, doctor_id, record_id, permission, granted_at, revoked_at
+                FROM access_grants
+                WHERE patient_id = ? AND doctor_id = ? AND record_id = ?
+                """,
+                (patient_id, doctor_id, record_id),
+            ).fetchone()
         return None if row is None else AccessGrant(**dict(row))
 
     def list_access_grants_for_record(self, record_id: str) -> list[AccessGrant]:
-        rows = self.connection.execute(
-            """
-            SELECT patient_id, doctor_id, record_id, permission, granted_at, revoked_at
-            FROM access_grants WHERE record_id = ? ORDER BY granted_at, doctor_id
-            """,
-            (record_id,),
-        ).fetchall()
+        with self._lock:
+            rows = self.connection.execute(
+                """
+                SELECT patient_id, doctor_id, record_id, permission, granted_at, revoked_at
+                FROM access_grants WHERE record_id = ? ORDER BY granted_at, doctor_id
+                """,
+                (record_id,),
+            ).fetchall()
         return [AccessGrant(**dict(row)) for row in rows]
 
     def list_access_grants_for_doctor(self, doctor_id: str) -> list[AccessGrant]:
         """Return all grants associated with a doctor, including revoked grants."""
 
-        rows = self.connection.execute(
-            """
-            SELECT patient_id, doctor_id, record_id, permission, granted_at, revoked_at
-            FROM access_grants WHERE doctor_id = ? ORDER BY granted_at, record_id
-            """,
-            (doctor_id,),
-        ).fetchall()
+        with self._lock:
+            rows = self.connection.execute(
+                """
+                SELECT patient_id, doctor_id, record_id, permission, granted_at, revoked_at
+                FROM access_grants WHERE doctor_id = ? ORDER BY granted_at, record_id
+                """,
+                (doctor_id,),
+            ).fetchall()
         return [AccessGrant(**dict(row)) for row in rows]

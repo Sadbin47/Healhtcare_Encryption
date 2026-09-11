@@ -285,6 +285,79 @@ class HealthcareWorkflowService:
     def request_record(self, doctor_id: str, record_id: str) -> bytes:
         """Authorize, retrieve, recover the AES key, and decrypt an EHR."""
 
+        envelope, record = self.retrieve_encrypted_record(doctor_id, record_id, emit_access_audit=False)
+        try:
+            if self.private_key_resolver is None:
+                raise ValueError("private_key_resolver is required for doctor retrieval")
+            private_key = self.private_key_resolver(doctor_id)
+            aad = record_aad(record_id, envelope.key_protection, envelope.key_reference)
+            if envelope.key_protection == ECC_ALGORITHM:
+                aes_key = recover_aes_key_ecc(envelope.wrapped_key, private_key)
+            elif envelope.key_protection == MLKEM_ALGORITHM:
+                aes_key = recover_aes_key_mlkem(envelope.wrapped_key, private_key)
+            else:
+                raise StorageError("unsupported envelope key-protection algorithm")
+            plaintext = decrypt_record(envelope.nonce, envelope.ciphertext, envelope.tag, aes_key, aad)
+        except Exception:
+            self._audit(
+                operation=DECRYPTION_FAILED,
+                success=False,
+                actor=doctor_id,
+                patient_id=record.patient_id,
+                record_id=record_id,
+                algorithm=record.key_protection_algorithm,
+                backend=record.storage_backend,
+                reason="record decryption failed",
+            )
+            raise
+        self._audit(
+            operation=DECRYPTION_SUCCESS,
+            success=True,
+            actor=doctor_id,
+            patient_id=record.patient_id,
+            record_id=record_id,
+            algorithm=record.key_protection_algorithm,
+            backend=record.storage_backend,
+        )
+        doctor_address = self._doctor_address(doctor_id)
+        try:
+            self.blockchain.record_access(record_id, sender=doctor_address)
+        except Exception:
+            self._audit(
+                operation=RECORD_RETRIEVED,
+                success=False,
+                actor=doctor_id,
+                patient_id=record.patient_id,
+                record_id=record_id,
+                algorithm=record.key_protection_algorithm,
+                backend=record.storage_backend,
+                reason="blockchain access-event transaction failed",
+            )
+            raise
+        self._audit(
+            operation=RECORD_RETRIEVED,
+            success=True,
+            actor=doctor_id,
+            patient_id=record.patient_id,
+            record_id=record_id,
+            algorithm=record.key_protection_algorithm,
+            backend=record.storage_backend,
+        )
+        return plaintext
+
+    def retrieve_encrypted_record(
+        self,
+        doctor_id: str,
+        record_id: str,
+        *,
+        emit_access_audit: bool = True,
+    ) -> tuple[EncryptedEnvelope, MedicalRecord]:
+        """Authorize and return ciphertext envelope metadata only.
+
+        No private key is consulted and no plaintext is produced.  This is the
+        path used by the network API; doctors recover/decrypt locally.
+        """
+
         doctor = self.database.get_doctor(doctor_id)
         record = self.database.get_record(record_id)
         if doctor is None:
@@ -314,8 +387,6 @@ class HealthcareWorkflowService:
                 reason="local patient consent is not active",
             )
             raise PermissionError("patient consent is not active")
-        if self.private_key_resolver is None:
-            raise ValueError("private_key_resolver is required for doctor retrieval")
         try:
             storage_reference, chain_hash, _ = self.blockchain.get_record_metadata(record_id)
             if chain_hash.hex() != record.encrypted_file_hash.lower().removeprefix("0x"):
@@ -323,15 +394,6 @@ class HealthcareWorkflowService:
             envelope = self.storage.download_encrypted_record(storage_reference)
             if envelope.record_id != record_id or envelope.ciphertext_hash != record.encrypted_file_hash:
                 raise StorageError("retrieved envelope does not match record metadata")
-            private_key = self.private_key_resolver(doctor_id)
-            aad = record_aad(record_id, envelope.key_protection, envelope.key_reference)
-            if envelope.key_protection == ECC_ALGORITHM:
-                aes_key = recover_aes_key_ecc(envelope.wrapped_key, private_key)
-            elif envelope.key_protection == MLKEM_ALGORITHM:
-                aes_key = recover_aes_key_mlkem(envelope.wrapped_key, private_key)
-            else:
-                raise StorageError("unsupported envelope key-protection algorithm")
-            plaintext = decrypt_record(envelope.nonce, envelope.ciphertext, envelope.tag, aes_key, aad)
         except Exception:
             self._audit(
                 operation=DECRYPTION_FAILED,
@@ -341,39 +403,31 @@ class HealthcareWorkflowService:
                 record_id=record_id,
                 algorithm=record.key_protection_algorithm,
                 backend=record.storage_backend,
-                reason="record retrieval, integrity verification, or decryption failed",
+                reason="record retrieval or integrity verification failed",
             )
             raise
-        self._audit(
-            operation=DECRYPTION_SUCCESS,
-            success=True,
-            actor=doctor_id,
-            patient_id=record.patient_id,
-            record_id=record_id,
-            algorithm=record.key_protection_algorithm,
-            backend=record.storage_backend,
-        )
-        try:
-            self.blockchain.record_access(record_id, sender=doctor_address)
-        except Exception:
+        if emit_access_audit:
+            try:
+                self.blockchain.record_access(record_id, sender=doctor_address)
+            except Exception:
+                self._audit(
+                    operation=RECORD_RETRIEVED,
+                    success=False,
+                    actor=doctor_id,
+                    patient_id=record.patient_id,
+                    record_id=record_id,
+                    algorithm=record.key_protection_algorithm,
+                    backend=record.storage_backend,
+                    reason="blockchain access-event transaction failed",
+                )
+                raise
             self._audit(
                 operation=RECORD_RETRIEVED,
-                success=False,
+                success=True,
                 actor=doctor_id,
                 patient_id=record.patient_id,
                 record_id=record_id,
                 algorithm=record.key_protection_algorithm,
                 backend=record.storage_backend,
-                reason="blockchain access-event transaction failed",
             )
-            raise
-        self._audit(
-            operation=RECORD_RETRIEVED,
-            success=True,
-            actor=doctor_id,
-            patient_id=record.patient_id,
-            record_id=record_id,
-            algorithm=record.key_protection_algorithm,
-            backend=record.storage_backend,
-        )
-        return plaintext
+        return envelope, record

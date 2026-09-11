@@ -24,6 +24,8 @@ from .record_storage import retrieve_encrypted_record, store_encrypted_record
 from .blockchain_client import BlockchainClient
 from .service import HealthcareWorkflowService
 from .audit import AuditEntry, AuditEvent, JsonlAuditSink, MemoryAuditSink
+from .auth import AuthenticationError, Principal, TokenAuthenticator
+from .doctor_client import DoctorClient, decrypt_envelope
 
 __all__ = [
     "BlockchainClient",
@@ -32,6 +34,11 @@ __all__ = [
     "AuditEvent",
     "JsonlAuditSink",
     "MemoryAuditSink",
+    "AuthenticationError",
+    "Principal",
+    "TokenAuthenticator",
+    "DoctorClient",
+    "decrypt_envelope",
     "retrieve_encrypted_record",
     "store_encrypted_record",
 ]

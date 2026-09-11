@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import base64
+import json
 import sys
 import tempfile
+import threading
 import unittest
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 FRAMEWORK = Path(__file__).parents[1] / "02_framework"
 if str(FRAMEWORK) not in sys.path:
     sys.path.insert(0, str(FRAMEWORK))
 
-from api import HealthcareAPI  # noqa: E402
+from api import HealthcareAPI, create_server  # noqa: E402
 from audit import (  # noqa: E402
     ACCESS_DENIED,
     ACCESS_GRANTED,
@@ -28,12 +32,15 @@ from crypto.ecc_protection import (  # noqa: E402
     generate_key_pair as generate_ecc_key_pair,
     serialize_public_key as serialize_ecc_public_key,
 )
+from crypto.envelope import EncryptedEnvelope  # noqa: E402
 from crypto.mlkem_protection import (  # noqa: E402
     ALGORITHM as MLKEM_ALGORITHM,
     generate_key_pair as generate_mlkem_key_pair,
     serialize_public_key as serialize_mlkem_public_key,
 )
 from database import Database  # noqa: E402
+from doctor_client import DoctorClient  # noqa: E402
+from auth import AuthenticationError, TokenAuthenticator  # noqa: E402
 from identity import register_doctor, register_patient  # noqa: E402
 from service import HealthcareWorkflowService  # noqa: E402
 from storage import LocalStorage  # noqa: E402
@@ -152,7 +159,9 @@ class Phase6ServiceTests(unittest.TestCase):
             blockchain.grant_access("record-api", DOCTOR_ADDRESS)
             grant_access(database, PATIENT_ID, DOCTOR_ID, "record-api")
             result = api.request({"token": "ok", "doctor_id": DOCTOR_ID, "record_id": "record-api"})
-            self.assertEqual(base64.b64decode(result["ehr_base64"]), b"api ehr")
+            self.assertNotIn("ehr_base64", result)
+            envelope = EncryptedEnvelope.from_dict(result["envelope"])
+            self.assertEqual(DoctorClient(service.private_key_resolver(DOCTOR_ID)).decrypt(envelope), b"api ehr")
         finally:
             database.close()
             storage_root.cleanup()
@@ -174,6 +183,80 @@ class Phase6ServiceTests(unittest.TestCase):
                 [RECORD_CREATED, ACCESS_GRANTED, ACCESS_REVOKED],
             )
         finally:
+            database.close()
+            storage_root.cleanup()
+
+    def test_token_authentication_binds_role_and_actor(self) -> None:
+        authenticator = TokenAuthenticator.from_environment(
+            "patient-token=patient-001:patient,doctor-token=doctor-001:doctor,admin-token=admin:admin"
+        )
+        self.assertEqual(authenticator.authorize("patient-token", role="patient", actor_id="patient-001").actor_id, "patient-001")
+        with self.assertRaises(AuthenticationError):
+            authenticator.authorize("patient-token", role="doctor", actor_id="patient-001")
+        with self.assertRaises(AuthenticationError):
+            authenticator.authorize("doctor-token", role="doctor", actor_id="other-doctor")
+        self.assertEqual(authenticator.authorize("admin-token", role="admin", actor_id="any-patient").role, "admin")
+
+    def test_threaded_encrypted_retrieval_uses_shared_file_database_safely(self) -> None:
+        database, storage_root, blockchain, _audit, service = self._service(ECC_ALGORITHM)
+        try:
+            service.upload_record(PATIENT_ID, b"threaded api", DOCTOR_ID, ECC_ALGORITHM, record_id="record-threaded")
+            service.grant_doctor_access(PATIENT_ID, DOCTOR_ID, "record-threaded")
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                results = list(
+                    executor.map(
+                        lambda _index: service.retrieve_encrypted_record("doctor-001", "record-threaded")[0].record_id,
+                        range(16),
+                    )
+                )
+            self.assertEqual(results, ["record-threaded"] * 16)
+        finally:
+            database.close()
+            storage_root.cleanup()
+
+    def test_http_bearer_api_returns_encrypted_envelope(self) -> None:
+        database, storage_root, blockchain, _audit, service = self._service(ECC_ALGORITHM)
+        server = None
+        thread = None
+        try:
+            authenticator = TokenAuthenticator.from_environment(
+                "patient-token=patient-001:patient,doctor-token=doctor-001:doctor"
+            )
+            server = create_server("127.0.0.1", 0, HealthcareAPI(service, authenticator=authenticator))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            url = f"http://127.0.0.1:{server.server_port}"
+            upload = json.dumps(
+                {
+                    "patient_id": PATIENT_ID,
+                    "doctor_id": DOCTOR_ID,
+                    "algorithm": ECC_ALGORITHM,
+                    "record_id": "record-http",
+                    "ehr_base64": base64.b64encode(b"http ehr").decode("ascii"),
+                }
+            ).encode("utf-8")
+            request = urllib.request.Request(
+                f"{url}/records", data=upload, headers={"Authorization": "Bearer patient-token", "Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                self.assertEqual(response.status, 200)
+            service.grant_doctor_access(PATIENT_ID, DOCTOR_ID, "record-http")
+            request = urllib.request.Request(
+                f"{url}/records/request",
+                data=json.dumps({"doctor_id": DOCTOR_ID, "record_id": "record-http"}).encode("utf-8"),
+                headers={"Authorization": "Bearer doctor-token", "Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            self.assertNotIn("ehr_base64", result)
+            envelope = EncryptedEnvelope.from_dict(result["envelope"])
+            self.assertEqual(DoctorClient(service.private_key_resolver(DOCTOR_ID)).decrypt(envelope), b"http ehr")
+        finally:
+            if server is not None:
+                server.shutdown()
+                server.server_close()
+            if thread is not None:
+                thread.join(timeout=2)
             database.close()
             storage_root.cleanup()
 
